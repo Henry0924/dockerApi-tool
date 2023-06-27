@@ -75,7 +75,7 @@ func genContainerHostConfig(index int) (hostConfig *container.HostConfig) {
 	now := time.Now().Unix()
 	hostConfig = new(container.HostConfig)
 
-	binderIndex := index*3 + 1
+	binderIndex := (index-1)*3 + 1
 	resources := container.Resources{
 		Devices: []container.DeviceMapping{
 			{fmt.Sprintf("/dev/binder%d", binderIndex), "/dev/binder", "rwm"},
