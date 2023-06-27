@@ -60,7 +60,7 @@ func (a *dockerApi) CreateContainer(index int, host string, name string, image s
 		Tty:          true,
 		OpenStdin:    true,
 		Cmd:          cmd,
-		ExposedPorts: map[nat.Port]struct{}{"9082/tcp": {}, "10000/tcp": {}, "10001/udp": {}},
+		ExposedPorts: map[nat.Port]struct{}{"9082/tcp": {}, "10000/tcp": {}, "10001/udp": {}, "5555/tcp": {}},
 	}, hostConfig, nil, nil, name)
 	if err != nil {
 		log.Fatal(err)
@@ -112,11 +112,13 @@ func genContainerHostConfig(index int) (hostConfig *container.HostConfig) {
 		tcpPort = 10000 + index*3
 		udpPort = tcpPort + 1
 		webPort = tcpPort + 2
+		adbPort = 5000 + index
 	)
 	hostConfig.PortBindings = map[nat.Port][]nat.PortBinding{
 		"9082/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(webPort)}},
 		"10000/tcp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(tcpPort)}},
 		"10001/udp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(udpPort)}},
+		"5555/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(adbPort)}},
 	}
 
 	hostConfig.CapAdd = []string{
