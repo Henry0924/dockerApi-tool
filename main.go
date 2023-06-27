@@ -12,7 +12,7 @@ import (
 var (
 	command = flag.String("command", "list", "操作指令, create--创建容器, start--启动容器, stop--停止容器, pause--暂停容器, unpause--取消暂停, remove--删除容器, list--容器列表")
 	index   = flag.String("i", "1", "容器序号1-12, 创建容器时必传, 例1、2、3")
-	host    = flag.String("host", "192.168.30.3", "主机host")
+	host    = flag.String("host", "", "主机host")
 	name    = flag.String("name", "", "容器别名, 例001、001,002、001,002,003")
 )
 
