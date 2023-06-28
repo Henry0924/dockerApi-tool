@@ -11,7 +11,7 @@ import (
 
 var (
 	command = flag.String("command", "list", "操作指令, create--创建容器, start--启动容器, stop--停止容器, pause--暂停容器, unpause--取消暂停, remove--删除容器, list--容器列表")
-	index   = flag.String("i", "1", "容器序号1-12, 创建容器时必传, 例1、2、3")
+	index   = flag.String("i", "", "容器序号1-12, 创建容器时必传, 例1、2、3")
 	host    = flag.String("host", "", "主机host")
 	name    = flag.String("name", "", "容器别名, 例001、001,002、001,002,003")
 )
@@ -44,10 +44,17 @@ func main() {
 		if atoi < 1 || atoi > 12 {
 			log.Fatal("容器序号错误")
 		}
+
+		bridged := false
+		if br, ok := config["bridgedNetworkMode"]; ok {
+			if v, ok := br.(bool); ok {
+				bridged = v
+			}
+		}
 		nameSplit := strings.Split(*name, ",")
 		for _, s := range nameSplit {
-			id := DockerApi.CreateContainer(atoi, *host, strings.TrimSpace(s), config["image"].(string))
-			log.Printf("容器授权序号: %d, 容器别名: %s, 容器ID: %s", atoi, strings.TrimSpace(s), id)
+			id := DockerApi.CreateContainer(atoi, *host, strings.TrimSpace(s), bridged, config)
+			log.Printf("容器授权序号: %d, 容器别名: %s, 容器ID: %s, 桥接模式: %v", atoi, strings.TrimSpace(s), id, bridged)
 		}
 
 	case "start":

@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/container"
+	"github.com/docker/docker/api/types/network"
 	"github.com/docker/docker/client"
 	"github.com/docker/go-connections/nat"
 	"io"
@@ -32,27 +33,60 @@ func (a *dockerApi) newClient(host string, timeout client.Opt) (cli *client.Clie
 	return
 }
 
-func (a *dockerApi) CreateContainer(index int, host string, name string, image string) (containerId string) {
+func (a *dockerApi) CreateContainer(index int, host string, name string, bridged bool, params map[string]interface{}) (containerId string) {
 	cli, err := a.newClient(host, nil)
 	if err != nil {
 		log.Fatal(err)
 	}
+	ctx := context.Background()
 
-	out, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
+	image := params["image"].(string)
+	images, err := cli.ImageList(ctx, types.ImageListOptions{})
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
-	defer out.Close()
-	io.Copy(os.Stdout, out)
 
-	hostConfig := genContainerHostConfig(index)
+	imageExists := false
+	for _, ig := range images {
+		if len(ig.RepoTags) == 0 {
+			continue
+		}
+		if image == ig.RepoTags[0] {
+			imageExists = true
+			break
+		}
+	}
+
+	if !imageExists {
+		out, err := cli.ImagePull(context.Background(), image, types.ImagePullOptions{})
+		if err != nil {
+			log.Fatal(err)
+		}
+		defer out.Close()
+		io.Copy(os.Stdout, out)
+	}
+
+	hostConfig := genContainerHostConfig(index, bridged)
 
 	cmd := []string{
 		"androidboot.hardware=rk30board",
-		"androidboot.redroid_fps=30",
+		"androidboot.redroid_fps=24",
 		"androidboot.selinux=permissive",
 		"qemu=1",
+	}
+
+	exposedPorts := map[nat.Port]struct{}{"9082/tcp": {}, "10000/tcp": {}, "10001/udp": {}, "5555/tcp": {}}
+
+	netConfig := new(network.NetworkingConfig)
+	if bridged {
+		netId := a.CreateMacvlan(host, params["gateway"].(string), params["subnet"].(string))
+		netConfig.EndpointsConfig = map[string]*network.EndpointSettings{
+			"myt": &network.EndpointSettings{IPAMConfig: &network.EndpointIPAMConfig{IPv4Address: params["androidHost"].(string)}, NetworkID: netId},
+		}
+
+		cmd = append(cmd, []string{fmt.Sprintf("net.dns1=%s", params["dns1"]), fmt.Sprintf("net.dns2=%s", params["dns2"])}...)
+
+		exposedPorts = map[nat.Port]struct{}{}
 	}
 
 	resp, err := cli.ContainerCreate(context.Background(), &container.Config{
@@ -60,8 +94,8 @@ func (a *dockerApi) CreateContainer(index int, host string, name string, image s
 		Tty:          true,
 		OpenStdin:    true,
 		Cmd:          cmd,
-		ExposedPorts: map[nat.Port]struct{}{"9082/tcp": {}, "10000/tcp": {}, "10001/udp": {}, "5555/tcp": {}},
-	}, hostConfig, nil, nil, name)
+		ExposedPorts: exposedPorts,
+	}, hostConfig, netConfig, nil, name)
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -71,7 +105,7 @@ func (a *dockerApi) CreateContainer(index int, host string, name string, image s
 	return
 }
 
-func genContainerHostConfig(index int) (hostConfig *container.HostConfig) {
+func genContainerHostConfig(index int, bridged bool) (hostConfig *container.HostConfig) {
 	now := time.Now().Unix()
 	hostConfig = new(container.HostConfig)
 
@@ -108,17 +142,22 @@ func genContainerHostConfig(index int) (hostConfig *container.HostConfig) {
 	}
 	hostConfig.RestartPolicy = container.RestartPolicy{Name: "unless-stopped"}
 
-	var (
-		tcpPort = 10000 + index*3
-		udpPort = tcpPort + 1
-		webPort = tcpPort + 2
-		adbPort = 5000 + index
-	)
-	hostConfig.PortBindings = map[nat.Port][]nat.PortBinding{
-		"9082/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(webPort)}},
-		"10000/tcp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(tcpPort)}},
-		"10001/udp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(udpPort)}},
-		"5555/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(adbPort)}},
+	if !bridged {
+		var (
+			tcpPort = 10000 + index*3
+			udpPort = tcpPort + 1
+			webPort = tcpPort + 2
+			adbPort = 5000 + index
+		)
+		hostConfig.PortBindings = map[nat.Port][]nat.PortBinding{
+			"9082/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(webPort)}},
+			"10000/tcp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(tcpPort)}},
+			"10001/udp": {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(udpPort)}},
+			"5555/tcp":  {nat.PortBinding{HostIP: "", HostPort: strconv.Itoa(adbPort)}},
+		}
+		hostConfig.NetworkMode = "default"
+	} else {
+		hostConfig.NetworkMode = "myt"
 	}
 
 	hostConfig.CapAdd = []string{
@@ -140,10 +179,48 @@ func genContainerHostConfig(index int) (hostConfig *container.HostConfig) {
 		"BLOCK_SUSPEND",
 	}
 
-	hostConfig.NetworkMode = "default"
 	hostConfig.SecurityOpt = []string{"seccomp=unconfined"}
 	hostConfig.Sysctls = map[string]string{"net.ipv4.conf.eth0.rp_filter": "2"}
 	return
+}
+
+func (a *dockerApi) getNetwork(cli *client.Client) []types.NetworkResource {
+	list, err := cli.NetworkList(context.Background(), types.NetworkListOptions{})
+	if err != nil {
+		log.Fatal(err)
+	}
+	return list
+}
+
+func (a *dockerApi) CreateMacvlan(host string, gateway string, subnet string) string {
+	cli, err := a.newClient(host, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+
+	list := a.getNetwork(cli)
+	for _, resource := range list {
+		if resource.Name == "myt" {
+			return resource.ID
+		}
+	}
+	config := types.NetworkCreate{
+		Driver:     "macvlan",
+		EnableIPv6: false,
+		IPAM: &network.IPAM{
+			Driver: "default",
+			Config: []network.IPAMConfig{{Subnet: subnet, Gateway: gateway}},
+		},
+		Options: map[string]string{"parent": "eth0"},
+	}
+
+	resp, err := cli.NetworkCreate(ctx, "myt", config)
+	if err != nil {
+		log.Fatal(err)
+	}
+	return resp.ID
 }
 
 func (a *dockerApi) List(host string) (containers []types.Container) {
