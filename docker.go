@@ -73,6 +73,9 @@ func (a *dockerApi) CreateContainer(index int, host string, name string, bridged
 		"androidboot.redroid_fps=24",
 		"androidboot.selinux=permissive",
 		"qemu=1",
+		"androidboot.dobox_width=720",
+		"androidboot.dobox_height=1280",
+		"androidboot.dobox_dpi=320",
 	}
 
 	exposedPorts := map[nat.Port]struct{}{"9082/tcp": {}, "10000/tcp": {}, "10001/udp": {}, "5555/tcp": {}}
