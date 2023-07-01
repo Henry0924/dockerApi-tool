@@ -98,7 +98,7 @@ func (a *dockerApi) CreateContainer(index int, host string, name string, bridged
 		OpenStdin:    true,
 		Cmd:          cmd,
 		ExposedPorts: exposedPorts,
-	}, hostConfig, netConfig, nil, name)
+	}, hostConfig, netConfig, nil, fmt.Sprintf("mytCustom_%d_%s", index, name))
 	if err != nil {
 		log.Fatal(err)
 		return
@@ -253,7 +253,7 @@ func (a *dockerApi) containerIdByName(cli *client.Client, name string) (id strin
 
 	for _, t := range containers {
 		if len(t.Names) > 0 {
-			if strings.ReplaceAll(t.Names[0], "/", "") == name {
+			if strings.Contains(strings.ReplaceAll(t.Names[0], "/", ""), name) {
 				id = t.ID
 				break
 			}
