@@ -180,7 +180,9 @@ func genContainerHostConfig(index int, bridged bool) (hostConfig *container.Host
 		"SYS_PTRACE",
 		"WAKE_ALARM",
 		"BLOCK_SUSPEND",
+		"MKNOD",
 	}
+	hostConfig.DeviceCgroupRules = []string{"c 10:* rmw", "b 253:* rmw", "b 7:* rmw"}
 
 	hostConfig.SecurityOpt = []string{"seccomp=unconfined"}
 	hostConfig.Sysctls = map[string]string{"net.ipv4.conf.eth0.rp_filter": "2"}
